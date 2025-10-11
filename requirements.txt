@@ -1,0 +1,14 @@
+matplotlib>=3.8.0
+numba==0.62.1
+numpy==2.3.3
+pandas==2.3.3
+pyarrow==21.0.0
+python-dotenv==1.1.1
+scikit-learn==1.7.2
+scipy==1.16.2
+seaborn>=0.13.0
+torch==2.8.0
+torchaudio
+torch-summary==1.4.5
+torchvision
+tqdm>=4.66.0
