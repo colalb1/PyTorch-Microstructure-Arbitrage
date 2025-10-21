@@ -1,10 +1,10 @@
-import asyncio
 import json
+import threading
 import time
 from pathlib import Path
+from queue import Queue
 
-import aiofiles
-import websockets
+import websocket
 
 """
 Robust, async data collector.
@@ -16,7 +16,8 @@ To Run:
 python data_collection/collector.py
 """
 
-COLLECTION_DURATION_SECONDS = 60
+
+COLLECTION_DURATION_SECONDS = 5
 
 # Define WebSocket endpoints and subscriptions messages for each exchange
 EXCHANGES = {
@@ -25,7 +26,7 @@ EXCHANGES = {
         "subscription": {
             "type": "subscribe",
             "product_ids": ["BTC-USD"],
-            "channels": ["level2"],
+            "channel": "level2",
         },
         "output_file": "data/raw/coinbase_l2.jsonl",
     },
@@ -41,149 +42,115 @@ EXCHANGES = {
 }
 
 
-async def websocket_handler(
-    exchange_name: str, config: dict, writer_queue: asyncio.Queue
-) -> None:
+def file_writer(writer_queue: Queue) -> None:
     """
-    Handles the WebSocket connection for a single exchange.
-
-    Connects, subscribes, listens for messages, and pushes them to the writer queue.
-    Includes automatic reconnection with exponential backoff.
-
-    Args:
-        exchange_name (str): The name of the exchange (e.g., 'coinbase').
-        config (dict): The configuration dictionary for the exchange.
-        writer_queue (asyncio.Queue): The queue to which timestamped messages are pushed.
-
-    Returns:
-        None
+    Pulls data from a thread-safe queue and writes it to the appropriate file.
+    This runs in its own dedicated thread.
     """
-    uri = config["uri"]
-    subscription = config["subscription"]
-    backoff_delay = 1  # Init delay in seconds for reconnection
+    file_handlers = {
+        name: open(config["output_file"], "a") for name, config in EXCHANGES.items()
+    }
+    print("File writer started.")
 
     while True:
+        message = writer_queue.get()
+
+        if message is None:  # Sentinel for stopping
+            break
+
+        exchange_name, data = message
+        handler = file_handlers[exchange_name]
+        handler.write(json.dumps(data) + "\n")
+        handler.flush()
+        writer_queue.task_done()
+
+    for handler in file_handlers.values():
+        handler.close()
+    print("File writer has shut down.")
+
+
+def create_websocket_handler(
+    exchange_name: str, subscription: dict, writer_queue: Queue
+) -> None:
+    """
+    Factory function to create the websocket.WebSocketApp with the correct callbacks.
+    """
+
+    def on_open(ws):
+        print(f"[{exchange_name.capitalize()}] Connection opened. Subscribing...")
+        ws.send(json.dumps(subscription))
+        print(f"[{exchange_name.capitalize()}] Subscribed with: {subscription}")
+
+    def on_message(ws, message):
         try:
-            async with websockets.connect(uri) as websocket:
-                print(f"[{exchange_name.capitalize()}] Connection successful.")
-                backoff_delay = 1  # Reset backoff upon successful connection
+            payload = json.loads(message)
+            # Standardize the message format and add timestamp
+            standardized_message = {
+                "system_ts_ns": time.time_ns(),
+                "payload": payload,
+            }
+            writer_queue.put((exchange_name, standardized_message))
+        except json.JSONDecodeError:
+            print(f"[{exchange_name.capitalize()}] Error decoding JSON: {message}")
 
-                # Send subscription message
-                await websocket.send(json.dumps(subscription))
+    def on_error(ws, error):
+        print(f"[{exchange_name.capitalize()}] Error: {error}")
 
-                print(f"[{exchange_name.capitalize()}] Subscribed with: {subscription}")
+    def on_close(ws, close_status_code, close_msg):
+        print(f"[{exchange_name.capitalize()}] Connection closed.")
 
-                # Message listener
-                async for message in websocket:
-                    try:
-                        # High-res timestamp
-                        data = json.loads(message)
-                        data["system_ts_ns"] = time.time_ns()
-
-                        await writer_queue.put((exchange_name, data))
-                    except json.JSONDecodeError:
-                        print(
-                            f"[{exchange_name.capitalize()}] Error decoding JSON: {message}"
-                        )
-                        continue
-
-        except (
-            websockets.exceptions.ConnectionClosedError,
-            websockets.exceptions.ConnectionClosedOK,
-        ) as e:
-            print(
-                f"[{exchange_name.capitalize()}] Connection closed: {e}. Reconnecting in {backoff_delay}s..."
-            )
-        except Exception as e:
-            print(
-                f"[{exchange_name.capitalize()}] An unexpected error occurred: {e}. Reconnecting in {backoff_delay}s..."
-            )
-
-        await asyncio.sleep(backoff_delay)
-        backoff_delay = min(backoff_delay * 2, 60)  # Backoff capped at 60s
+    return websocket.WebSocketApp(
+        EXCHANGES[exchange_name]["uri"],
+        on_open=on_open,
+        on_message=on_message,
+        on_error=on_error,
+        on_close=on_close,
+    )
 
 
-async def file_writer(writer_queue: asyncio.Queue) -> None:
-    """
-    Asynchronously writes data from the queue to the appropriate .jsonl file.
-
-    This runs as a separate, dedicated task to prevent I/O blocking.
-
-    Args:
-        writer_queue (asyncio.Queue): The queue from which messages are read to be written to files.
-
-    Returns:
-        None
-    """
-    # Open files in append mode asynchronously
-    file_handlers = {
-        name: await aiofiles.open(config["output_file"], mode="a")
-        for name, config in EXCHANGES.items()
-    }
-    print("File writer started. Ready to persist data.")
-
-    try:
-        while True:
-            exchange_name, data = await writer_queue.get()
-            handler = file_handlers[exchange_name]
-
-            await handler.write(json.dumps(data) + "\n")
-            await handler.flush()
-
-            writer_queue.task_done()
-    except asyncio.CancelledError:
-        print("File writer received cancellation request.")
-    finally:
-        # Close file handlers
-        for name, handler in file_handlers.items():
-            await handler.close()
-            print(f"Closed file: {EXCHANGES[name]['output_file']}")
-
-        print("File writer has shut down.")
-
-
-async def main():
+def main():
     """
     Main function to set up and run the data collection pipeline.
     """
-    # Make raw data path
     Path("data/raw").mkdir(parents=True, exist_ok=True)
+    writer_queue = Queue()
 
-    # Websocket queue
-    writer_queue = asyncio.Queue()
+    # Start the file writer thread
+    writer_thread = threading.Thread(target=file_writer, args=(writer_queue,))
+    writer_thread.start()
 
-    # File writer
-    writer_task = asyncio.create_task(file_writer(writer_queue))
+    # Create and start a thread for each exchange
+    ws_threads = []
+    ws_apps = []
 
-    # Exchange handler
-    handler_tasks = [
-        asyncio.create_task(websocket_handler(name, config, writer_queue))
-        for name, config in EXCHANGES.items()
-    ]
+    for name, config in EXCHANGES.items():
+        ws_app = create_websocket_handler(name, config["subscription"], writer_queue)
+        ws_apps.append(ws_app)
+
+        thread = threading.Thread(target=ws_app.run_forever)
+        thread.daemon = True
+        ws_threads.append(thread)
+
+        thread.start()
 
     print(f"Starting data collection for {COLLECTION_DURATION_SECONDS} seconds...")
-    start_time = time.time()
+    time.sleep(COLLECTION_DURATION_SECONDS)
 
-    # RUNS MAIN FUNCTIONALITY
-    while time.time() - start_time < COLLECTION_DURATION_SECONDS:
-        await asyncio.sleep(1)
+    print("Collection duration finished. Shutting down...")
 
-    print("Collection duration finished. Shutting down tasks...")
+    # Stop WebSocket connections
+    for ws_app in ws_apps:
+        ws_app.close()
 
-    # Cancel all tasks
-    for task in handler_tasks:
-        task.cancel()
+    # Stop the writer thread
+    writer_queue.put(None)
+    writer_thread.join()
 
-    await writer_queue.join()
-    writer_task.cancel()
-
-    await asyncio.gather(*handler_tasks, writer_task, return_exceptions=True)
-
-    print("All tasks have been shut down. Script finished.")
+    print("All threads have been shut down. Script finished.")
 
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        main()
     except KeyboardInterrupt:
         print("\nScript interrupted by user. Exiting.")
