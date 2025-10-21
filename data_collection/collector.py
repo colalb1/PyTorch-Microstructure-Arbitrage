@@ -18,7 +18,7 @@ python data_collection/collector.py
 
 COLLECTION_DURATION_SECONDS = 60
 
-# Define WebSocket endpoints and subscription messages for each exchange.
+# Define WebSocket endpoints and subscriptions messages for each exchange
 EXCHANGES = {
     "coinbase": {
         "uri": "wss://advanced-trade-ws.coinbase.com",
@@ -41,11 +41,22 @@ EXCHANGES = {
 }
 
 
-async def websocket_handler(exchange_name, config, writer_queue):
+async def websocket_handler(
+    exchange_name: str, config: dict, writer_queue: asyncio.Queue
+) -> None:
     """
     Handles the WebSocket connection for a single exchange.
-    Connects, subscribes, listens for messages, and pushes them to writer queue.
+
+    Connects, subscribes, listens for messages, and pushes them to the writer queue.
     Includes automatic reconnection with exponential backoff.
+
+    Args:
+        exchange_name (str): The name of the exchange (e.g., 'coinbase').
+        config (dict): The configuration dictionary for the exchange.
+        writer_queue (asyncio.Queue): The queue to which timestamped messages are pushed.
+
+    Returns:
+        None
     """
     uri = config["uri"]
     subscription = config["subscription"]
@@ -55,18 +66,20 @@ async def websocket_handler(exchange_name, config, writer_queue):
         try:
             async with websockets.connect(uri) as websocket:
                 print(f"[{exchange_name.capitalize()}] Connection successful.")
-                backoff_delay = 1  # Reset backoff on successful connection
+                backoff_delay = 1  # Reset backoff upon successful connection
 
                 # Send subscription message
                 await websocket.send(json.dumps(subscription))
+
                 print(f"[{exchange_name.capitalize()}] Subscribed with: {subscription}")
 
-                # Listen for messages
+                # Message listener
                 async for message in websocket:
                     try:
                         # High-res timestamp
                         data = json.loads(message)
                         data["system_ts_ns"] = time.time_ns()
+
                         await writer_queue.put((exchange_name, data))
                     except json.JSONDecodeError:
                         print(
@@ -90,10 +103,17 @@ async def websocket_handler(exchange_name, config, writer_queue):
         backoff_delay = min(backoff_delay * 2, 60)  # Backoff capped at 60s
 
 
-async def file_writer(writer_queue):
+async def file_writer(writer_queue: asyncio.Queue) -> None:
     """
     Asynchronously writes data from the queue to the appropriate .jsonl file.
+
     This runs as a separate, dedicated task to prevent I/O blocking.
+
+    Args:
+        writer_queue (asyncio.Queue): The queue from which messages are read to be written to files.
+
+    Returns:
+        None
     """
     # Open files in append mode asynchronously
     file_handlers = {
@@ -106,18 +126,19 @@ async def file_writer(writer_queue):
         while True:
             exchange_name, data = await writer_queue.get()
             handler = file_handlers[exchange_name]
-            # Write the JSON string followed by a newline
+
             await handler.write(json.dumps(data) + "\n")
-            # Ensure data is written to disk immediately
             await handler.flush()
+
             writer_queue.task_done()
     except asyncio.CancelledError:
         print("File writer received cancellation request.")
     finally:
-        # Gracefully close all file handlers
+        # Close file handlers
         for name, handler in file_handlers.items():
             await handler.close()
             print(f"Closed file: {EXCHANGES[name]['output_file']}")
+
         print("File writer has shut down.")
 
 
