@@ -75,19 +75,23 @@ def process_coinbase_l2_data(file_path: str) -> list[dict]:
         for line in f:
             try:
                 data = json.loads(line)
+
                 system_ts = data["system_ts_ns"]
                 payload = data.get("payload", {})
                 events = payload.get("events", [])
 
                 for event in events:
                     updates = event.get("updates", [])
+
                     for update in updates:
                         side = update["side"]
                         price = update["price_level"]
                         quantity = update["new_quantity"]
+
                         book.update(side, price, quantity)
 
                 best_bid, best_ask = book.get_bbo()
+
                 if best_bid is not None and best_ask is not None:
                     bbo_data.append(
                         {
@@ -122,6 +126,7 @@ def process_kraken_l2_data(file_path: str) -> list[dict]:
         for line in f:
             try:
                 data = json.loads(line)
+
                 system_ts = data["system_ts_ns"]
                 payload = data.get("payload")
 
@@ -129,12 +134,15 @@ def process_kraken_l2_data(file_path: str) -> list[dict]:
                     continue
 
                 updates = payload[1]
-                if "as" in updates and "bs" in updates:  # Initial snapshot
+
+                # Initial update
+                if "as" in updates and "bs" in updates:
                     for price, quantity, _ in updates["bs"]:
                         book.update("bid", price, quantity)
                     for price, quantity, _ in updates["as"]:
                         book.update("ask", price, quantity)
-                else:  # Subsequent updates
+                # Subsequent updates
+                else:
                     if "b" in updates:
                         for price, quantity, *_ in updates["b"]:
                             book.update("bid", price, quantity)
@@ -143,6 +151,7 @@ def process_kraken_l2_data(file_path: str) -> list[dict]:
                             book.update("ask", price, quantity)
 
                 best_bid, best_ask = book.get_bbo()
+
                 if best_bid is not None and best_ask is not None:
                     bbo_data.append(
                         {
@@ -162,14 +171,16 @@ def main():
     Main function to implement the Data Alignment & Synchronization process
     using real Coinbase and Kraken data.
     """
-    # 1. Input: Define paths to the raw data files
+    # Define paths to the raw files
     coinbase_file = "data/raw/coinbase_l2.jsonl"
     kraken_file = "data/raw/kraken_l2.jsonl"
 
     print("--- Processing Raw Data ---")
-    # 2. Parsing and Order Book Reconstruction
+
+    # Parsing and Order Book Reconstruction
     data_a = process_coinbase_l2_data(coinbase_file)
     data_b = process_kraken_l2_data(kraken_file)
+
     print(f"Processed {len(data_a)} BBO updates from Coinbase.")
     print(f"Processed {len(data_b)} BBO updates from Kraken.")
     print("-" * 28)
@@ -178,11 +189,11 @@ def main():
         print("Error: No data processed. Exiting.")
         return
 
-    # 3. Indexing
+    # Indexing
     df_a = pd.DataFrame(data_a)
     df_b = pd.DataFrame(data_b)
 
-    # MANDATORY: Convert timestamp to a proper nanosecond-resolution datetime index
+    # Convert timestamp to a proper nanosecond-resolution datetime index
     df_a.set_index(pd.to_datetime(df_a["system_ts_ns"], unit="ns"), inplace=True)
     df_b.set_index(pd.to_datetime(df_b["system_ts_ns"], unit="ns"), inplace=True)
 
@@ -199,14 +210,14 @@ def main():
     print("\nKraken DataFrame Head:\n", df_b.head(3))
     print("-" * 36)
 
-    # 4. Master Alignment (CRITICAL)
+    # Master Alignment
     # Merge using an outer join to create a master index with all unique timestamps
     merged_df = pd.concat([df_a, df_b], axis=1, sort=True)
 
-    # MANDATORY: Apply forward-filling to propagate the last known state
+    # Forward-filling to propagate the last known state
     aligned_df = merged_df.ffill()
 
-    # To prevent lookahead bias, find the time when both feeds are active
+    # Find the time when both feeds are active
     first_valid_a = df_a.index.min()
     first_valid_b = df_b.index.min()
     start_time = max(first_valid_a, first_valid_b)
@@ -217,7 +228,7 @@ def main():
     # Drop any remaining rows with NaNs to ensure data integrity
     aligned_df.dropna(inplace=True)
 
-    # 5. Output and Verification
+    # Output and Verification
     print("\n--- Final Aligned & Synchronized DataFrame ---")
     print(f"Shape of the final DataFrame: {aligned_df.shape}")
 
