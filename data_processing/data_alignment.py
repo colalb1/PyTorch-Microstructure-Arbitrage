@@ -15,10 +15,16 @@ class OrderBook:
         # Store asks as (price, quantity) tuples.
         self.asks = SortedList()
 
-    def update(self, side, price, quantity):
+    def update(self, side: str, price: float, quantity: float) -> None:
         """
         Updates the order book with a new price level.
+
         If quantity is 0, the price level is removed.
+
+        Args:
+            side (str): The side of the order book to update ('bid' or 'ask').
+            price (float): The price level to update.
+            quantity (float): The new quantity at the price level.
         """
         price = float(price)
         quantity = float(quantity)
@@ -38,19 +44,29 @@ class OrderBook:
         if quantity > 0:
             book_side.add((price_key, quantity))
 
-    def get_bbo(self):
+    def get_bbo(self) -> tuple[float | None, float | None]:
         """
         Returns the best bid and best ask from the order book.
-        Returns None for a side if the book is empty.
+
+        Returns:
+            tuple[float | None, float | None]: A tuple containing the best bid and best ask.
+                                               Returns None for a side if the book is empty.
         """
         best_bid = -self.bids[0][0] if self.bids else None
         best_ask = self.asks[0][0] if self.asks else None
         return best_bid, best_ask
 
 
-def process_coinbase_l2_data(file_path):
+def process_coinbase_l2_data(file_path: str) -> list[dict]:
     """
     Processes Coinbase L2 data from a JSONL file to extract BBO at each timestamp.
+
+    Args:
+        file_path (str): The path to the Coinbase JSONL data file.
+
+    Returns:
+        list[dict]: A list of dictionaries, where each dictionary represents a BBO update
+                    with 'system_ts_ns', 'best_bid', and 'best_ask'.
     """
     book = OrderBook()
     bbo_data = []
@@ -86,10 +102,18 @@ def process_coinbase_l2_data(file_path):
     return bbo_data
 
 
-def process_kraken_l2_data(file_path):
+def process_kraken_l2_data(file_path: str) -> list[dict]:
     """
     Processes Kraken L2 data from a JSONL file to extract BBO at each timestamp.
+
     Handles different payload structures (initial snapshot vs. updates).
+
+    Args:
+        file_path (str): The path to the Kraken JSONL data file.
+
+    Returns:
+        list[dict]: A list of dictionaries, where each dictionary represents a BBO update
+                    with 'system_ts_ns', 'best_bid', and 'best_ask'.
     """
     book = OrderBook()
     bbo_data = []
