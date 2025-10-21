@@ -146,16 +146,16 @@ async def main():
     """
     Main function to set up and run the data collection pipeline.
     """
-    # Ensure the data/raw directory exists
+    # Make raw data path
     Path("data/raw").mkdir(parents=True, exist_ok=True)
 
-    # A queue to decouple WebSocket handlers from the file writer
+    # Websocket queue
     writer_queue = asyncio.Queue()
 
-    # Create the dedicated file writer task
+    # File writer
     writer_task = asyncio.create_task(file_writer(writer_queue))
 
-    # Create a handler task for each exchange
+    # Exchange handler
     handler_tasks = [
         asyncio.create_task(websocket_handler(name, config, writer_queue))
         for name, config in EXCHANGES.items()
@@ -164,22 +164,19 @@ async def main():
     print(f"Starting data collection for {COLLECTION_DURATION_SECONDS} seconds...")
     start_time = time.time()
 
-    # This loop keeps the main function alive while the tasks run.
-    # It also enforces the total collection duration.
+    # RUNS MAIN FUNCTIONALITY
     while time.time() - start_time < COLLECTION_DURATION_SECONDS:
         await asyncio.sleep(1)
 
     print("Collection duration finished. Shutting down tasks...")
 
-    # Gracefully cancel all running tasks
+    # Cancel all tasks
     for task in handler_tasks:
         task.cancel()
 
-    # Wait for the writer queue to be fully processed before shutting down
     await writer_queue.join()
     writer_task.cancel()
 
-    # Wait for all tasks to complete their cancellation
     await asyncio.gather(*handler_tasks, writer_task, return_exceptions=True)
 
     print("All tasks have been shut down. Script finished.")
