@@ -46,6 +46,9 @@ def file_writer(writer_queue: Queue) -> None:
     """
     Pulls data from a thread-safe queue and writes it to the appropriate file.
     This runs in its own dedicated thread.
+
+    Args:
+        writer_queue (Queue): The thread-safe queue to pull messages from.
     """
     file_handlers = {
         name: open(config["output_file"], "a") for name, config in EXCHANGES.items()
@@ -71,9 +74,17 @@ def file_writer(writer_queue: Queue) -> None:
 
 def create_websocket_handler(
     exchange_name: str, subscription: dict, writer_queue: Queue
-) -> None:
+) -> websocket.WebSocketApp:
     """
     Factory function to create the websocket.WebSocketApp with the correct callbacks.
+
+    Args:
+        exchange_name (str): The name of the exchange.
+        subscription (dict): The subscription message for the exchange.
+        writer_queue (Queue): The queue to which messages will be pushed.
+
+    Returns:
+        websocket.WebSocketApp: The configured WebSocketApp instance.
     """
 
     def on_open(ws):
@@ -108,9 +119,12 @@ def create_websocket_handler(
     )
 
 
-def main():
+def main() -> None:
     """
     Main function to set up and run the data collection pipeline.
+
+    Initializes the writer thread and a connection thread for each exchange,
+    runs for a configured duration, and then gracefully shuts everything down.
     """
     Path("data/raw").mkdir(parents=True, exist_ok=True)
     writer_queue = Queue()
