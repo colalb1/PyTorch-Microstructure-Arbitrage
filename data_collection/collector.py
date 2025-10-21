@@ -16,14 +16,12 @@ To Run:
 python data_collection/collector.py
 """
 
-
-# Define the total duration for the data collection script to run (in seconds).
 COLLECTION_DURATION_SECONDS = 60
 
 # Define WebSocket endpoints and subscription messages for each exchange.
 EXCHANGES = {
     "coinbase": {
-        "uri": "wss://ws-feed.exchange.coinbase.com",
+        "uri": "wss://advanced-trade-ws.coinbase.com",
         "subscription": {
             "type": "subscribe",
             "product_ids": ["BTC-USD"],
@@ -42,18 +40,16 @@ EXCHANGES = {
     },
 }
 
-# --- Core Logic ---
-
 
 async def websocket_handler(exchange_name, config, writer_queue):
     """
     Handles the WebSocket connection for a single exchange.
-    Connects, subscribes, listens for messages, and pushes them to a writer queue.
+    Connects, subscribes, listens for messages, and pushes them to writer queue.
     Includes automatic reconnection with exponential backoff.
     """
     uri = config["uri"]
     subscription = config["subscription"]
-    backoff_delay = 1  # Initial delay in seconds for reconnection
+    backoff_delay = 1  # Init delay in seconds for reconnection
 
     while True:
         try:
@@ -68,8 +64,8 @@ async def websocket_handler(exchange_name, config, writer_queue):
                 # Listen for messages
                 async for message in websocket:
                     try:
+                        # High-res timestamp
                         data = json.loads(message)
-                        # CRITICAL: Attach high-resolution timestamp
                         data["system_ts_ns"] = time.time_ns()
                         await writer_queue.put((exchange_name, data))
                     except json.JSONDecodeError:
@@ -90,9 +86,8 @@ async def websocket_handler(exchange_name, config, writer_queue):
                 f"[{exchange_name.capitalize()}] An unexpected error occurred: {e}. Reconnecting in {backoff_delay}s..."
             )
 
-        # Exponential backoff
         await asyncio.sleep(backoff_delay)
-        backoff_delay = min(backoff_delay * 2, 60)  # Cap backoff at 60 seconds
+        backoff_delay = min(backoff_delay * 2, 60)  # Backoff capped at 60s
 
 
 async def file_writer(writer_queue):
