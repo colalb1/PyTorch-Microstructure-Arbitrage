@@ -30,31 +30,41 @@ def simulate_unified_data(num_rows: int = 10000, start_time_ns=None) -> pd.DataF
 
     # Create data for Exchange A
     a_spread = np.random.uniform(0.5, 1.5, size=num_rows)
-    df_a = pd.DataFrame(
-        {
-            "A_best_ask": base_price + a_spread / 2,
-            "A_best_bid": base_price - a_spread / 2,
-            "A_ask_vol_1": np.random.uniform(0.1, 5, size=num_rows),
-            "A_bid_vol_1": np.random.uniform(0.1, 5, size=num_rows),
-        },
-        index=index,
-    )
 
-    # Create slightly different data for Exchange B (e.g., different spread, lagging price)
+    # Multi-level data for Exchange A
+    data_a = {
+        "A_best_ask": base_price + a_spread / 2,
+        "A_best_bid": base_price - a_spread / 2,
+    }
+
+    for i in range(1, 6):  # 5 levels of depth
+        data_a[f"A_ask_vol_{i}"] = np.random.uniform(
+            0.1, 5 - (i - 1) * 0.5, size=num_rows
+        )
+        data_a[f"A_bid_vol_{i}"] = np.random.uniform(
+            0.1, 5 - (i - 1) * 0.5, size=num_rows
+        )
+    df_a = pd.DataFrame(data_a, index=index)
+
+    # Multi-level data for Exchange Bs
     b_spread = np.random.uniform(0.6, 1.6, size=num_rows)
     price_lag = np.random.normal(0, 0.05, size=num_rows)
-    df_b = pd.DataFrame(
-        {
-            "B_best_ask": base_price + price_lag + b_spread / 2,
-            "B_best_bid": base_price + price_lag - b_spread / 2,
-            "B_ask_vol_1": np.random.uniform(0.1, 5, size=num_rows),
-            "B_bid_vol_1": np.random.uniform(0.1, 5, size=num_rows),
-        },
-        index=index,
-    )
+    data_b = {
+        "B_best_ask": base_price + price_lag + b_spread / 2,
+        "B_best_bid": base_price + price_lag - b_spread / 2,
+    }
+
+    for i in range(1, 6):  # 5 levels of depth
+        data_b[f"B_ask_vol_{i}"] = np.random.uniform(
+            0.1, 5 - (i - 1) * 0.5, size=num_rows
+        )
+        data_b[f"B_bid_vol_{i}"] = np.random.uniform(
+            0.1, 5 - (i - 1) * 0.5, size=num_rows
+        )
+    df_b = pd.DataFrame(data_b, index=index)
 
     # Simulate trades (less frequent than book updates)
-    trade_mask = np.random.random(num_rows) < 0.05  # 5% chance of a trade
+    trade_mask = np.random.random(num_rows) < 0.05
     trade_prices = base_price + np.random.normal(0, 0.1, size=num_rows)
     trade_volumes = np.random.uniform(0.01, 1, size=num_rows)
 
@@ -101,9 +111,11 @@ def engineer_book_features(df: pd.DataFrame) -> pd.DataFrame:
             df[f"{ex}_bid_vol_1"] + df[f"{ex}_ask_vol_1"]
         )
 
-        # Depth Ratio (assuming only top-level volume for this simulation)
-        # In a real scenario, this would involve more levels of the book.
-        df[f"{ex}_depth_ratio"] = df[f"{ex}_bid_vol_1"] / df[f"{ex}_ask_vol_1"]
+        # Depth Ratio (5 levels of the simulated book)
+        bid_vols = [df[f"{ex}_bid_vol_{i}"] for i in range(1, 6)]
+        ask_vols = [df[f"{ex}_ask_vol_{i}"] for i in range(1, 6)]
+
+        df[f"{ex}_depth_ratio"] = sum(bid_vols) / sum(ask_vols)
 
     return df
 
@@ -122,7 +134,6 @@ def engineer_trade_features(df: pd.DataFrame) -> pd.DataFrame:
     mid_price = df["A_mid_price"]
 
     # Determine trade sign: +1 for buys (trades above mid), -1 for sells (trades below mid).
-    # This is a more robust method than the simple price diff (tick rule).
     trade_sign = np.sign(df["trade_price"] - mid_price)
 
     # Apply the sign to the trade volume. NaNs will propagate correctly.
