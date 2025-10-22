@@ -1,10 +1,13 @@
 import json
+import logging
 import threading
 import time
 from pathlib import Path
 from queue import Queue
 
 import websocket
+
+logger = logging.getLogger(__name__)
 
 """
 Robust, async data collector.
@@ -53,7 +56,7 @@ def file_writer(writer_queue: Queue) -> None:
     file_handlers = {
         name: open(config["output_file"], "a") for name, config in EXCHANGES.items()
     }
-    print("File writer started.")
+    logger.info("File writer started.")
 
     while True:
         message = writer_queue.get()
@@ -69,7 +72,7 @@ def file_writer(writer_queue: Queue) -> None:
 
     for handler in file_handlers.values():
         handler.close()
-    print("File writer has shut down.")
+    logger.info("File writer has shut down.")
 
 
 def create_websocket_handler(
@@ -88,9 +91,9 @@ def create_websocket_handler(
     """
 
     def on_open(ws):
-        print(f"[{exchange_name.capitalize()}] Connection opened. Subscribing...")
+        logger.info(f"[{exchange_name.capitalize()}] Connection opened. Subscribing...")
         ws.send(json.dumps(subscription))
-        print(f"[{exchange_name.capitalize()}] Subscribed with: {subscription}")
+        logger.info(f"[{exchange_name.capitalize()}] Subscribed with: {subscription}")
 
     def on_message(ws, message):
         try:
@@ -102,13 +105,15 @@ def create_websocket_handler(
             }
             writer_queue.put((exchange_name, standardized_message))
         except json.JSONDecodeError:
-            print(f"[{exchange_name.capitalize()}] Error decoding JSON: {message}")
+            logger.info(
+                f"[{exchange_name.capitalize()}] Error decoding JSON: {message}"
+            )
 
     def on_error(ws, error):
-        print(f"[{exchange_name.capitalize()}] Error: {error}")
+        logger.info(f"[{exchange_name.capitalize()}] Error: {error}")
 
     def on_close(ws, close_status_code, close_msg):
-        print(f"[{exchange_name.capitalize()}] Connection closed.")
+        logger.info(f"[{exchange_name.capitalize()}] Connection closed.")
 
     return websocket.WebSocketApp(
         EXCHANGES[exchange_name]["uri"],
@@ -147,10 +152,12 @@ def main() -> None:
 
         thread.start()
 
-    print(f"Starting data collection for {COLLECTION_DURATION_SECONDS} seconds...")
+    logger.info(
+        f"Starting data collection for {COLLECTION_DURATION_SECONDS} seconds..."
+    )
     time.sleep(COLLECTION_DURATION_SECONDS)
 
-    print("Collection duration finished. Shutting down...")
+    logger.info("Collection duration finished. Shutting down...")
 
     # Stop WebSocket connections
     for ws_app in ws_apps:
@@ -160,11 +167,11 @@ def main() -> None:
     writer_queue.put(None)
     writer_thread.join()
 
-    print("All threads have been shut down. Script finished.")
+    logger.info("All threads have been shut down. Script finished.")
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\nScript interrupted by user. Exiting.")
+        logger.info("\nScript interrupted by user. Exiting.")

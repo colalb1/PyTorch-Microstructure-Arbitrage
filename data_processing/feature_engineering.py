@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 from data_alignment import align_data
 
-# Set up a logger for this module
 logger = logging.getLogger(__name__)
 
 
