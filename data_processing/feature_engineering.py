@@ -133,10 +133,10 @@ def engineer_trade_features(df: pd.DataFrame) -> pd.DataFrame:
     # Use Exchange A's mid-price as the reference for trade signing
     mid_price = df["A_mid_price"]
 
-    # Determine trade sign: +1 for buys (trades above mid), -1 for sells (trades below mid).
+    # +1 for buys (trades above mid), -1 for sells (trades below mid).
     trade_sign = np.sign(df["trade_price"] - mid_price)
 
-    # Apply the sign to the trade volume. NaNs will propagate correctly.
+    # Apply the sign to the trade volume. Will propagate None correctly
     df["signed_trade_volume"] = trade_sign * df["trade_volume"]
 
     # Realized Volatility (5-second rolling window)
@@ -174,6 +174,7 @@ def engineer_cross_exchange_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # Lead/Lag Indicator (A's price vs. B's lagged price)
     b_mid_price_lagged = df["B_mid_price"].shift(freq="100ms")
+
     # Reindex to align timestamps before calculating the difference
     b_mid_price_lagged = b_mid_price_lagged.reindex(df.index, method="ffill")
     df["lead_lag_100ms"] = df["A_mid_price"] - b_mid_price_lagged
