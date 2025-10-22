@@ -1,6 +1,12 @@
+import logging
+import sys
+
 import numpy as np
 import pandas as pd
 from data_alignment import align_data
+
+# Set up a logger for this module
+logger = logging.getLogger(__name__)
 
 
 def add_simulated_depth_and_trades(df: pd.DataFrame) -> pd.DataFrame:
@@ -122,20 +128,20 @@ def main():
     """
     Main function to run the full data processing and feature engineering pipeline.
     """
-    print("--- Starting Data Alignment and Feature Engineering Pipeline ---")
+    logger.info("--- Starting Data Alignment and Feature Engineering Pipeline ---")
 
     # Load and align real data
     aligned_df = align_data()
 
     if aligned_df is None:
-        print("Data alignment failed. Exiting.")
+        logger.error("Data alignment failed. Exiting.")
         return
 
-    print(f"\nReal aligned data loaded with shape: {aligned_df.shape}")
+    logger.info(f"Real aligned data loaded with shape: {aligned_df.shape}")
 
     # Augment with simulated data for advanced features
     augmented_df = add_simulated_depth_and_trades(aligned_df.copy())
-    print(f"Augmented data created with shape: {augmented_df.shape}")
+    logger.info(f"Augmented data created with shape: {augmented_df.shape}")
     initial_cols = augmented_df.shape[1]
 
     # Engineer features
@@ -146,15 +152,19 @@ def main():
     # Clean Nones
     features_df.dropna(inplace=True)
 
-    print(f"\nOriginal number of columns (post-augmentation): {initial_cols}")
-    print(f"Final number of features: {features_df.shape[1]}")
-    print("-" * 54)
+    logger.info(f"Original number of columns (post-augmentation): {initial_cols}")
+    logger.info(f"Final number of features: {features_df.shape[1]}")
 
-    # 4. Output and Verification
-    print("\n--- Final Feature DataFrame (Head) ---")
-    print(features_df.head())
-    print("-" * 38)
+    # Output and Verification
+    logger.info("--- Final Feature DataFrame (Head) ---")
+    logger.info(f"\n{features_df.head()}")
 
 
 if __name__ == "__main__":
+    # Configure the root logger
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        stream=sys.stdout,
+    )
     main()
