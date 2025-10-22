@@ -44,17 +44,21 @@ class OrderBook:
         if quantity > 0:
             book_side.add((price_key, quantity))
 
-    def get_bbo(self) -> tuple[float | None, float | None]:
+    def get_bbo(self) -> tuple[float | None, float | None, float | None, float | None]:
         """
-        Returns the best bid and best ask from the order book.
+        Returns the best bid/ask price and volume from the order book.
 
         Returns:
-            tuple[float | None, float | None]: A tuple containing the best bid and best ask.
-                                               Returns None for a side if the book is empty.
+            tuple[float | None, float | None, float | None, float | None]:
+                A tuple containing (best_bid_price, best_bid_vol, best_ask_price, best_ask_vol).
+                Returns None for a side if the book is empty.
         """
-        best_bid = -self.bids[0][0] if self.bids else None
-        best_ask = self.asks[0][0] if self.asks else None
-        return best_bid, best_ask
+        best_bid_price = -self.bids[0][0] if self.bids else None
+        best_bid_vol = self.bids[0][1] if self.bids else None
+        best_ask_price = self.asks[0][0] if self.asks else None
+        best_ask_vol = self.asks[0][1] if self.asks else None
+
+        return best_bid_price, best_bid_vol, best_ask_price, best_ask_vol
 
 
 def process_coinbase_l2_data(file_path: str) -> list[dict]:
@@ -90,14 +94,19 @@ def process_coinbase_l2_data(file_path: str) -> list[dict]:
 
                         book.update(side, price, quantity)
 
-                best_bid, best_ask = book.get_bbo()
+                best_bid, best_bid_vol, best_ask, best_ask_vol = book.get_bbo()
 
-                if best_bid is not None and best_ask is not None:
+                if all(
+                    v is not None
+                    for v in [best_bid, best_bid_vol, best_ask, best_ask_vol]
+                ):
                     bbo_data.append(
                         {
                             "system_ts_ns": system_ts,
                             "best_bid": best_bid,
+                            "bid_vol_1": best_bid_vol,
                             "best_ask": best_ask,
+                            "ask_vol_1": best_ask_vol,
                         }
                     )
             except json.JSONDecodeError:
@@ -150,14 +159,19 @@ def process_kraken_l2_data(file_path: str) -> list[dict]:
                         for price, quantity, *_ in updates["a"]:
                             book.update("ask", price, quantity)
 
-                best_bid, best_ask = book.get_bbo()
+                best_bid, best_bid_vol, best_ask, best_ask_vol = book.get_bbo()
 
-                if best_bid is not None and best_ask is not None:
+                if all(
+                    v is not None
+                    for v in [best_bid, best_bid_vol, best_ask, best_ask_vol]
+                ):
                     bbo_data.append(
                         {
                             "system_ts_ns": system_ts,
                             "best_bid": best_bid,
+                            "bid_vol_1": best_bid_vol,
                             "best_ask": best_ask,
+                            "ask_vol_1": best_ask_vol,
                         }
                     )
             except (json.JSONDecodeError, KeyError, IndexError) as e:
@@ -166,10 +180,13 @@ def process_kraken_l2_data(file_path: str) -> list[dict]:
     return bbo_data
 
 
-def main():
+def align_data() -> pd.DataFrame | None:
     """
     Main function to implement the Data Alignment & Synchronization process
     using real Coinbase and Kraken data.
+
+    Returns:
+        pd.DataFrame | None: The aligned and synchronized DataFrame, or None if processing fails.
     """
     # Define paths to the raw files
     coinbase_file = "data/raw/coinbase_l2.jsonl"
@@ -250,6 +267,11 @@ def main():
     )
     print("-" * 44)
 
+    return aligned_df
+
 
 if __name__ == "__main__":
-    main()
+    # To run this script directly for verification
+    final_df = align_data()
+    if final_df is not None:
+        print("\n--- Script executed successfully ---")
