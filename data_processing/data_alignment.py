@@ -1,7 +1,12 @@
 import json
+import logging
+import sys
 
 import pandas as pd
 from sortedcontainers import SortedList
+
+# Set up a logger for this module
+logger = logging.getLogger(__name__)
 
 
 class OrderBook:
@@ -110,7 +115,7 @@ def process_coinbase_l2_data(file_path: str) -> list[dict]:
                         }
                     )
             except json.JSONDecodeError:
-                print(f"Warning: Could not decode JSON from line: {line.strip()}")
+                logger.warning(f"Could not decode JSON from line: {line.strip()}")
                 continue
     return bbo_data
 
@@ -175,7 +180,7 @@ def process_kraken_l2_data(file_path: str) -> list[dict]:
                         }
                     )
             except (json.JSONDecodeError, KeyError, IndexError) as e:
-                print(f"Warning: Could not process line: {line.strip()} due to {e}")
+                logger.warning(f"Could not process line: {line.strip()} due to {e}")
                 continue
     return bbo_data
 
@@ -192,18 +197,17 @@ def align_data() -> pd.DataFrame | None:
     coinbase_file = "data/raw/coinbase_l2.jsonl"
     kraken_file = "data/raw/kraken_l2.jsonl"
 
-    print("--- Processing Raw Data ---")
+    logger.info("--- Processing Raw Data ---")
 
     # Parsing and Order Book Reconstruction
     data_a = process_coinbase_l2_data(coinbase_file)
     data_b = process_kraken_l2_data(kraken_file)
 
-    print(f"Processed {len(data_a)} BBO updates from Coinbase.")
-    print(f"Processed {len(data_b)} BBO updates from Kraken.")
-    print("-" * 28)
+    logger.info(f"Processed {len(data_a)} BBO updates from Coinbase.")
+    logger.info(f"Processed {len(data_b)} BBO updates from Kraken.")
 
     if not data_a or not data_b:
-        print("Error: No data processed. Exiting.")
+        logger.error("No data processed from one or both files. Exiting.")
         return
 
     # Indexing
@@ -222,10 +226,9 @@ def align_data() -> pd.DataFrame | None:
     df_a = df_a.add_prefix("coinbase_")
     df_b = df_b.add_prefix("kraken_")
 
-    print("\n--- Indexed DataFrames (Pre-Merge) ---")
-    print("Coinbase DataFrame Head:\n", df_a.head(3))
-    print("\nKraken DataFrame Head:\n", df_b.head(3))
-    print("-" * 36)
+    logger.info("Indexed DataFrames (Pre-Merge):")
+    logger.info(f"Coinbase DataFrame Head:\n{df_a.head(3)}")
+    logger.info(f"Kraken DataFrame Head:\n{df_b.head(3)}")
 
     # Master Alignment
     # Merge using an outer join to create a master index with all unique timestamps
@@ -246,32 +249,32 @@ def align_data() -> pd.DataFrame | None:
     aligned_df.dropna(inplace=True)
 
     # Output and Verification
-    print("\n--- Final Aligned & Synchronized DataFrame ---")
-    print(f"Shape of the final DataFrame: {aligned_df.shape}")
+    logger.info("--- Final Aligned & Synchronized DataFrame ---")
+    logger.info(f"Shape of the final DataFrame: {aligned_df.shape}")
 
     # Verify the time resolution of the index
     if isinstance(aligned_df.index, pd.DatetimeIndex):
-        print("Index type: pd.DatetimeIndex")
-        print("Time resolution of index: Nanosecond (inferred from data)")
+        logger.info("Index type: pd.DatetimeIndex")
+        logger.info("Time resolution of index: Nanosecond (inferred from data)")
     else:
-        print("Index is not a DatetimeIndex.")
+        logger.warning("Index is not a DatetimeIndex.")
 
-    print("\nFirst 5 rows of the final DataFrame:")
-    print(aligned_df.head())
-
-    print("\nLast 5 rows of the final DataFrame:")
-    print(aligned_df.tail())
-
-    print(
-        f"\nVerification: Any remaining NaN values? {aligned_df.isnull().values.any()}"
+    logger.info(f"First 5 rows of the final DataFrame:\n{aligned_df.head()}")
+    logger.info(f"Last 5 rows of the final DataFrame:\n{aligned_df.tail()}")
+    logger.info(
+        f"Verification: Any remaining NaN values? {aligned_df.isnull().values.any()}"
     )
-    print("-" * 44)
 
     return aligned_df
 
 
 if __name__ == "__main__":
-    # To run this script directly for verification
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        stream=sys.stdout,
+    )
     final_df = align_data()
+
     if final_df is not None:
-        print("\n--- Script executed successfully ---")
+        logger.info("--- Alignment script executed successfully ---")
