@@ -128,6 +128,8 @@ def main() -> None:
         dropout=model_config.DROPOUT,
     ).to(device)
 
+    model = torch.compile(model)
+
     # Loss and optimizer
     loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(
