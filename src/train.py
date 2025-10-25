@@ -1,3 +1,4 @@
+import logging
 from typing import Tuple
 
 import torch
@@ -11,6 +12,8 @@ import model_config
 from src.dataset import create_data_loaders
 from src.model import TCNModel
 from src.utils import plot_training_curves, save_model
+
+logger = logging.getLogger(__name__)
 
 
 def train_epoch(
@@ -109,7 +112,7 @@ def main() -> None:
     """
     # Setup
     device = torch.device(model_config.DEVICE)
-    print(f"Using device: {device}")
+    logger.info(f"Using device: {device}")
 
     # DataLoaders
     train_loader, val_loader, _ = create_data_loaders(
@@ -138,9 +141,9 @@ def main() -> None:
     train_losses, val_losses = [], []
     train_accuracies, val_accuracies = [], []
 
-    print("Starting training...")
+    logger.info("Starting training...")
     for epoch in range(model_config.NUM_EPOCHS):
-        print(f"--- Epoch {epoch + 1}/{model_config.NUM_EPOCHS} ---")
+        logger.info(f"--- Epoch {epoch + 1}/{model_config.NUM_EPOCHS} ---")
 
         train_loss, train_acc = train_epoch(
             model, train_loader, loss_fn, optimizer, device
@@ -152,16 +155,18 @@ def main() -> None:
         train_accuracies.append(train_acc)
         val_accuracies.append(val_acc)
 
-        print(f"Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
-        print(f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
+        logger.info(f"Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
+        logger.info(f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             save_model(model, model_config.MODEL_SAVE_PATH)
 
-            print(f"New best model saved with validation loss: {best_val_loss:.4f}")
+            logger.info(
+                f"New best model saved with validation loss: {best_val_loss:.4f}"
+            )
 
-    print("Training finished.")
+    logger.info("Training finished.")
 
     # Plotting
     plot_training_curves(train_losses, val_losses, train_accuracies, val_accuracies)

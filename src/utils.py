@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import List
 
@@ -6,6 +7,8 @@ import torch
 import torch.nn as nn
 
 import model_config
+
+logger = logging.getLogger(__name__)
 
 
 def plot_training_curves(
@@ -56,7 +59,7 @@ def plot_training_curves(
     # Save
     save_path = model_config.PLOT_SAVE_PATH
     plt.savefig(save_path)
-    print(f"Training plot saved to {save_path}")
+    logger.info(f"Training plot saved to {save_path}")
     plt.close()
 
 
@@ -74,4 +77,4 @@ def save_model(model: nn.Module, path: str) -> None:
 
     torch.save(model.state_dict(), path)
 
-    print(f"Model saved to {path}")
+    logger.info(f"Model saved to {path}")
