@@ -1,9 +1,12 @@
+import logging
 import os
 from typing import Tuple
 
 import numpy as np
 import pandas as pd
 import torch
+
+logger = logging.getLogger(__name__)
 
 
 def simulate_feature_data(
@@ -33,7 +36,9 @@ def simulate_feature_data(
     # Make 'cross_basis' a bit more like a real spread
     df["cross_basis"] = np.cumsum(np.random.randn(num_rows) * 1e-5) + 0.001
 
-    print(f"Generated dummy data with {num_rows} rows and {num_features} features.")
+    logger.info(
+        f"Generated dummy data with {num_rows} rows and {num_features} features."
+    )
     return df
 
 
@@ -61,7 +66,7 @@ def create_targets(
 
     # The last 'horizon_ms' values will be NaN, so we keep them as STABLE or drop them
     # For simplicity, we'll keep them as STABLE, but in a real scenario, they should be handled carefully.
-    print("Target vector 'y' created.")
+    logger.info("Target vector 'y' created.")
     return y
 
 
@@ -86,7 +91,7 @@ def create_sequences(
             targets[i + sequence_length - 1]
         )  # Target corresponds to the end of the sequence
 
-    print(f"Created {len(X_seq)} sequences of length {sequence_length}.")
+    logger.info(f"Created {len(X_seq)} sequences of length {sequence_length}.")
     return np.array(X_seq), np.array(y_seq)
 
 
@@ -119,10 +124,10 @@ def main():
     X_test = X_sequences[val_end:]
     y_test = y_sequences[val_end:]
 
-    print("\nData split chronologically:")
-    print(f"Train set: {len(X_train)} samples")
-    print(f"Validation set: {len(X_val)} samples")
-    print(f"Test set: {len(X_test)} samples")
+    logger.info("\nData split chronologically:")
+    logger.info(f"Train set: {len(X_train)} samples")
+    logger.info(f"Validation set: {len(X_val)} samples")
+    logger.info(f"Test set: {len(X_test)} samples")
 
     # Convert to PyTorch Tensors
     X_train_pt = torch.tensor(X_train, dtype=torch.float32)
@@ -147,7 +152,7 @@ def main():
     torch.save(X_test_pt, os.path.join(output_dir, "X_test.pt"))
     torch.save(y_test_pt, os.path.join(output_dir, "y_test.pt"))
 
-    print(f"\nProcessed data saved to '{output_dir}' directory.")
+    logger.info(f"\nProcessed data saved to '{output_dir}' directory.")
 
 
 if __name__ == "__main__":
